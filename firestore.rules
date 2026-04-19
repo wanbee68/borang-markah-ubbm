@@ -1,0 +1,19 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+    
+    // UBBM Records - allowing public access for preview as workaround for auth restrictions
+    match /artifacts/{appId}/public/data/ubbm_records/{recordId} {
+      allow read, write: if true;
+    }
+    
+    // Students collection
+    match /artifacts/{appId}/public/data/students/{studentId} {
+      allow read, write: if true;
+    }
+  }
+}

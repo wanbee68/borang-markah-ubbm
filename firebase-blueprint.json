@@ -1,0 +1,39 @@
+{
+  "entities": {
+    "Student": {
+      "title": "Student",
+      "description": "Student record for assessment lookup.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "jantina": { "type": "string", "enum": ["L", "P"] },
+        "maktabId": { "type": "string" },
+        "kelas": { "type": "string" },
+        "tingkatan": { "type": "string" }
+      },
+      "required": ["name", "jantina", "maktabId", "kelas", "tingkatan"]
+    },
+    "UBBMRecord": {
+      "title": "UBBM Record",
+      "description": "A record of an oral assessment for Bahasa Melayu.",
+      "type": "object",
+      "properties": {
+        "header": { "type": "object" },
+        "candidates": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "userId": { "type": "string" }
+      },
+      "required": ["header", "candidates", "createdAt", "userId"]
+    }
+  },
+  "firestore": {
+    "/artifacts/{appId}/public/data/students/{studentId}": {
+      "schema": "Student",
+      "description": "Collection of master student records."
+    },
+    "/artifacts/{appId}/public/data/ubbm_records/{recordId}": {
+      "schema": "UBBMRecord",
+      "description": "Collection of UBBM assessment records."
+    }
+  }
+}
