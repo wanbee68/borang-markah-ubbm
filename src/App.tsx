@@ -39,6 +39,7 @@ const App = () => {
   const [masterStudents, setMasterStudents] = useState<any[]>([]);
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showGuidelinesModal, setShowGuidelinesModal] = useState(false);
   const [activeSlot, setActiveSlot] = useState<number | null>(null);
   const [isPdfReady, setIsPdfReady] = useState(false);
   // @ts-ignore
@@ -697,8 +698,14 @@ const App = () => {
       <div className="flex-grow p-4 md:p-8">
         <div className="max-w-7xl mx-auto space-y-6">
           <div className="bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="bg-blue-900 p-6 text-white text-center border-b-4 border-yellow-500">
-              <h1 className="text-2xl font-black uppercase tracking-widest">Maktab Rendah Sains Mara</h1>
+            <div className="bg-blue-900 p-6 text-white text-center border-b-4 border-yellow-500 relative">
+              <button 
+                onClick={() => setShowGuidelinesModal(true)}
+                className="absolute right-4 top-4 flex items-center gap-2 bg-blue-800 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all border border-blue-600 shadow-lg"
+              >
+                <Info size={16} /> Bantuan
+              </button>
+              <h1 className="text-2xl font-black uppercase tracking-widest text-center">Maktab Rendah Sains Mara</h1>
               <h2 className="text-lg font-bold opacity-90 mt-1 italic underline decoration-yellow-500 underline-offset-8">Borang Markah Ujian Bertutur Bahasa Melayu (UBBM)</h2>
             </div>
 
@@ -940,6 +947,107 @@ const App = () => {
             <p className="text-slate-400 text-xs font-black uppercase tracking-[0.4em]">Sistem dibangunkan oleh Cikgu Wan Bee 2026</p>
          </div>
       </footer>
+
+      {/* Floating Help Button */}
+      <button 
+        onClick={() => setShowGuidelinesModal(true)}
+        className="fixed bottom-6 right-6 z-40 bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-full shadow-2xl transition-all hover:scale-110 active:scale-95 group border-4 border-white"
+        title="Garis Panduan Pengguna"
+      >
+        <Info size={32} />
+        <span className="absolute right-full mr-4 top-1/2 -translate-y-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none uppercase tracking-widest">
+          Garis Panduan Pengguna
+        </span>
+      </button>
+
+      {/* Guidelines Modal */}
+      {showGuidelinesModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden border-4 border-blue-600 animate-in fade-in zoom-in duration-200">
+            <div className="p-6 bg-blue-600 text-white flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <ShieldCheck size={32} />
+                <div>
+                  <h3 className="font-black uppercase tracking-widest text-lg">Garis Panduan Pengguna</h3>
+                  <p className="text-xs font-bold opacity-80">Sistem UBBM (Ujian Bertutur Bahasa Melayu)</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowGuidelinesModal(false)}
+                className="p-2 hover:bg-white/20 rounded-full transition-colors"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="flex-grow overflow-y-auto p-8 space-y-8 scrollbar-hide">
+              <section className="space-y-3">
+                <div className="flex items-center gap-2 text-blue-900 font-black uppercase tracking-widest text-sm">
+                  <UserCheck size={18} />
+                  <span>1. Pendaftaran & Carian Calon</span>
+                </div>
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs font-medium leading-relaxed space-y-2">
+                  <p>• Gunakan butang <strong>"Cari" (ikon kanta pembesar)</strong> di sebelah nama untuk memanggil data dari Master List.</p>
+                  <p>• Data diasingkan mengikut <strong>Tingkatan (T4 & T5)</strong> dan <strong>Kelas</strong>.</p>
+                  <p>• Jika calon tiada dalam senarai, anda boleh menaip secara manual dan klik <strong>"Tambah Calon Baru"</strong>.</p>
+                </div>
+              </section>
+
+              <section className="space-y-3">
+                <div className="flex items-center gap-2 text-blue-900 font-black uppercase tracking-widest text-sm">
+                  <Upload size={18} />
+                  <span>2. Muat Naik Data (Excel / PDF)</span>
+                </div>
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs font-medium leading-relaxed space-y-2">
+                  <p>• Klik <strong>"Muat Naik Senarai"</strong> di bahagian atas jadual untuk mengimport nama secara pukal.</p>
+                  <p>• Sistem menyokong fail <strong>Excel (.xlsx)</strong> dan <strong>PDF</strong>. Pastikan data nama berada dalam turutan yang jelas.</p>
+                </div>
+              </section>
+
+              <section className="space-y-3">
+                <div className="flex items-center gap-2 text-blue-900 font-black uppercase tracking-widest text-sm">
+                  <PenTool size={18} />
+                  <span>3. Kemasukan Markah</span>
+                </div>
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs font-medium leading-relaxed space-y-2 text-slate-700">
+                  <p>• <strong>A. Individu (40m):</strong> Tatabahasa, Sebutan, Kefasihan, dan Idea (Maks 10m setiap satu).</p>
+                  <p>• <strong>B. Kumpulan (30m):</strong> Markah Holistik untuk perbincangan (Maks 30m).</p>
+                  <p>• <strong>Jumlah:</strong> Dikira secara automatik (Maks 70m).</p>
+                  <p>• <strong>Penyelarasan:</strong> Ruang untuk ulasan atau markah pelarasan khas (Arial 13).</p>
+                </div>
+              </section>
+
+              <section className="space-y-3">
+                <div className="flex items-center gap-2 text-blue-900 font-black uppercase tracking-widest text-sm">
+                  <Save size={18} />
+                  <span>4. Simpan & Laporan</span>
+                </div>
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs font-medium leading-relaxed space-y-2">
+                  <p>• <strong>Simpan Rekod:</strong> Menyimpan data ke pengkalan data (Cloud) untuk rujukan masa depan.</p>
+                  <p>• <strong>Cetak PDF:</strong> Menjana borang rasmi untuk setiap sidang.</p>
+                  <p>• <strong>Laporan Induk:</strong> Klik ikon "Laporan" pada Dashboard untuk menjana senarai markah mengikut kelas.</p>
+                </div>
+              </section>
+
+              <div className="p-6 bg-yellow-50 rounded-2xl border-2 border-yellow-200 space-y-2">
+                <p className="text-[10px] font-black uppercase text-yellow-800 tracking-tighter">Nota Penting</p>
+                <p className="text-xs font-bold text-yellow-900 leading-relaxed italic">
+                  "Pastikan maklumat PENDIDIK (Pemeriksa/Penyemak/Pengesah) diisi di bahagian bawah borang sebelum mencetak PDF untuk memastikan dokumen adalah sah."
+                </p>
+              </div>
+            </div>
+
+            <div className="p-6 bg-slate-50 border-t border-slate-100">
+              <button 
+                onClick={() => setShowGuidelinesModal(false)}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black uppercase tracking-[0.2em] py-4 rounded-2xl shadow-xl transition-all"
+              >
+                Faham & Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showSearchModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
