@@ -34,8 +34,9 @@ service cloud.firestore {
       allow create: if (
         isValidUBBMRecord(incoming()) &&
         incoming().userId == (isSignedIn() ? request.auth.uid : 'anonymous') &&
-        (incoming().createdAt is string || incoming().createdAt is number)
+        incoming().createdAt == request.time.toMillis() // For numeric timestamp comparison if used
       ) || (
+        // Fallback for simple creation without numeric timestamp enforcement if app uses ISO string
         isValidUBBMRecord(incoming()) &&
         incoming().userId == (isSignedIn() ? request.auth.uid : 'anonymous')
       );

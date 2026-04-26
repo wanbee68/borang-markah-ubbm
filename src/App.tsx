@@ -62,7 +62,8 @@ const App = () => {
   const emptyCandidate = () => ({
     nama: '',
     jantina: 'L',
-    noMaktab: '',
+    tingkatan: '',
+    kelas: '',
     angkaGiliran: '',
     analitik: { tatabahasa: 0, sebutan: 0, kefasihan: 0, idea: 0 },
     holistik: 0,
@@ -117,7 +118,7 @@ const App = () => {
         setUser(currUser);
       } else {
         try {
-          // Attempt silent sign-in, but don't log errors if it fails (likely disabled in console)
+          // Attempt silent sign-in
           await signInAnonymously(auth);
         } catch (err) {
           // Silently fail auth; Firestore rules are set to public for this preview
@@ -126,12 +127,25 @@ const App = () => {
       setLoading(false);
     });
 
+    const testConnection = async () => {
+      try {
+        const { getDocFromServer, doc: firestoreDoc } = await import('firebase/firestore');
+        await getDocFromServer(firestoreDoc(db, 'artifacts', appId, 'public', 'data', 'connection_test', 'status'));
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('the client is offline')) {
+          console.error("Please check your Firebase configuration.");
+        }
+      }
+    };
+    testConnection();
+
     return () => unsubscribe();
   }, []);
 
   useEffect(() => {
     // We listen for changes regardless of auth state because Firestore rules are public for this collection
     const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'ubbm_records'));
+    const path = `artifacts/${appId}/public/data/ubbm_records`;
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
       const sortedData = data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -149,6 +163,8 @@ const App = () => {
           pengesahJawatan: last.pengesahJawatan || prev.pengesahJawatan
         }));
       }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, path);
     });
     return () => unsubscribe();
   }, [user]);
@@ -156,6 +172,7 @@ const App = () => {
   useEffect(() => {
     // Fetch master student list
     const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'students'));
+    const path = `artifacts/${appId}/public/data/students`;
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
       // Sort by Tingkatan first, then Kelas, then Name
@@ -174,6 +191,8 @@ const App = () => {
         return a.name.localeCompare(b.name);
       });
       setMasterStudents(sorted);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, path);
     });
     return () => unsubscribe();
   }, []);
@@ -181,6 +200,53 @@ const App = () => {
   const showToast = (msg: string) => {
     setNotification({ show: true, message: msg });
     setTimeout(() => setNotification({ show: false, message: '' }), 4000);
+  };
+
+  enum OperationType {
+    CREATE = 'create',
+    UPDATE = 'update',
+    DELETE = 'delete',
+    LIST = 'list',
+    GET = 'get',
+    WRITE = 'write',
+  }
+
+  interface FirestoreErrorInfo {
+    error: string;
+    operationType: OperationType;
+    path: string | null;
+    authInfo: {
+      userId?: string | null;
+      email?: string | null;
+      emailVerified?: boolean | null;
+      isAnonymous?: boolean | null;
+      tenantId?: string | null;
+      providerInfo?: {
+        providerId?: string | null;
+        email?: string | null;
+      }[];
+    }
+  }
+
+  const handleFirestoreError = (error: unknown, operationType: OperationType, path: string | null) => {
+    const errInfo: FirestoreErrorInfo = {
+      error: error instanceof Error ? error.message : String(error),
+      authInfo: {
+        userId: auth.currentUser?.uid,
+        email: auth.currentUser?.email,
+        emailVerified: auth.currentUser?.emailVerified,
+        isAnonymous: auth.currentUser?.isAnonymous,
+        tenantId: auth.currentUser?.tenantId,
+        providerInfo: auth.currentUser?.providerData?.map(provider => ({
+          providerId: provider.providerId,
+          email: provider.email,
+        })) || []
+      },
+      operationType,
+      path
+    };
+    console.error('Firestore Error: ', JSON.stringify(errInfo));
+    throw new Error(JSON.stringify(errInfo));
   };
 
   // File Upload Logic
@@ -204,7 +270,7 @@ const App = () => {
         const ws = wb.Sheets[wb.SheetNames[0]];
         // @ts-ignore
         const data = window.XLSX.utils.sheet_to_json(ws, { header: 1 });
-        const rows = (data as any[]).slice(1).filter(row => row.length > 0);
+        const rows = (data as any[]).filter(row => Array.isArray(row) && row.length > 0);
         mapDataToCandidates(rows);
       } catch (err) { showToast("Ralat memproses fail Excel."); }
     };
@@ -232,23 +298,47 @@ const App = () => {
   };
 
   const mapDataToCandidates = (rows: any[][]) => {
-    const newCandidates = Array(5).fill(null).map(emptyCandidate);
-    rows.slice(0, 5).forEach((row, i) => {
-      let name = "", noMaktab = "", giliran = "";
-      row.forEach(cell => {
-        const s = String(cell).trim();
-        if (s.length > 15 && !/\d/.test(s)) name = s;
-        else if (/^[A-Z]{2,}\d+/.test(s) || (s.length > 4 && /\d/.test(s) && s.length < 12)) noMaktab = s;
-      });
-      newCandidates[i] = {
-        ...newCandidates[i],
-        nama: name.toUpperCase(),
-        noMaktab: noMaktab,
-        angkaGiliran: giliran
-      };
+    const newCandidates = [...candidates];
+    
+    // Attempt to find meaningful rows (discarding headers)
+    const dataRows = rows.filter(row => {
+      const rowStr = row.join(' ').toUpperCase();
+      return !rowStr.includes('BIL') && !rowStr.includes('NAMA') && !rowStr.includes('UBBM');
     });
+
+    dataRows.slice(0, 5).forEach((row, i) => {
+      let name = "", giliran = "";
+      
+      // Heuristic parsing
+      for (const cell of row) {
+        const s = String(cell).trim();
+        if (!s) continue;
+        
+        // Number only cells are probably 'Bil' or scores
+        if (/^\d+$/.test(s) && s.length < 3) continue;
+
+        // Long text without many numbers is likely a name
+        if (s.length > 3 && !/^\d+$/.test(s) && !name) {
+           name = s;
+        } else if (/^[A-Z]\d+/.test(s) || /^\d{5,}/.test(s)) {
+           // Likely index number or giliran
+           giliran = s;
+        }
+      }
+
+      if (name) {
+        newCandidates[i] = {
+          ...newCandidates[i],
+          nama: name.toUpperCase(),
+          tingkatan: '', 
+          kelas: '',
+          angkaGiliran: giliran || newCandidates[i].angkaGiliran
+        };
+      }
+    });
+
     setCandidates(newCandidates);
-    showToast("Senarai pelajar berjaya dimuat naik");
+    showToast("Pelajar berjaya dimetakan ke borang (Maksimum 5)");
   };
 
   // State Handlers
@@ -286,22 +376,68 @@ const App = () => {
   };
 
   const saveRecord = async () => {
+    const path = `artifacts/${appId}/public/data/ubbm_records`;
     try {
       const saveDate = new Date();
+      // Only keep non-empty candidates
+      const validCandidates = candidates.filter(c => c.nama.trim() !== '');
+      
+      if (validCandidates.length === 0) {
+        showToast("Sila masukkan sekurang-kurangnya satu calon");
+        return;
+      }
+
       await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'ubbm_records'), {
         header: { ...header, tarikhSimpan: saveDate.toLocaleDateString('ms-MY'), masaSimpan: saveDate.toLocaleTimeString('ms-MY') },
-        candidates,
+        candidates: validCandidates,
         createdAt: saveDate.toISOString(),
         userId: user?.uid || 'anonymous'
       });
+
+      // Optional: Ask to save to master list if they aren't there?
+      // For now, we just save the session record.
       showToast("Rekod berjaya disimpan");
     } catch (err) { 
-      console.error(err);
+      handleFirestoreError(err, OperationType.WRITE, path);
       showToast("Gagal menyimpan rekod."); 
     }
   };
 
+  const saveToMasterList = async () => {
+    const path = `artifacts/${appId}/public/data/students`;
+    const validCandidates = candidates.filter(c => c.nama.trim() !== '');
+    
+    if (validCandidates.length === 0) {
+      showToast("Tiada data calon untuk disimpan ke Master List");
+      return;
+    }
+
+    let savedCount = 0;
+    for (const c of validCandidates) {
+      // Check if already exists in master students (local cache)
+      const exists = masterStudents.some(ms => ms.name.toUpperCase() === c.nama.toUpperCase());
+      if (!exists) {
+        try {
+          await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'students'), {
+            name: c.nama.toUpperCase(),
+            tingkatan: c.tingkatan || '',
+            kelas: c.kelas.toUpperCase(),
+            maktabId: c.angkaGiliran || '', // Use giliran as fallback ID if no maktabId field
+            jantina: c.jantina || 'L'
+          });
+          savedCount++;
+        } catch (err) {
+          handleFirestoreError(err, OperationType.WRITE, path);
+        }
+      }
+    }
+    
+    if (savedCount > 0) showToast(`${savedCount} calon baru ditambah ke Master List`);
+    else showToast("Semua calon sudah ada dalam Master List");
+  };
+
   const deleteRecord = async (id: string) => {
+    const path = `artifacts/${appId}/public/data/ubbm_records/${id}`;
     if (deleteConfirmId !== id) {
       setDeleteConfirmId(id);
       showToast("Klik sekali lagi untuk PADAM");
@@ -313,7 +449,7 @@ const App = () => {
       await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'ubbm_records', id)); 
       showToast("Rekod dipadam");
     } catch (err) { 
-      console.error(err);
+      handleFirestoreError(err, OperationType.DELETE, path);
       showToast("Gagal memadam rekod."); 
     } finally {
       setDeleteConfirmId(null);
@@ -352,7 +488,8 @@ const App = () => {
     newCandidates[activeSlot] = {
       ...newCandidates[activeSlot],
       nama: student.name,
-      noMaktab: student.maktabId,
+      tingkatan: student.tingkatan || '',
+      kelas: student.kelas || '',
     };
     setCandidates(newCandidates);
     setShowSearchModal(false);
@@ -396,12 +533,12 @@ const App = () => {
       doc.setFontSize(10);
       doc.text(`NO PUSAT: ${header.noPusat || '-'}`, 20, 32);
       doc.text(`NAMA MAKTAB: ${header.namaMaktab}`, 20, 38);
-      doc.text(`SIDANG: ${header.sidang}`, pageWidth - 50, 32);
-      doc.text(`TARIKH/MASA: ${header.tarikhMasa || '-'}`, pageWidth - 50, 38);
+      doc.text(`SIDANG: ${header.sidang}`, pageWidth - 75, 32);
+      doc.text(`TARIKH/MASA: ${header.tarikhMasa || '-'}`, pageWidth - 75, 38);
 
       const tableData = candidates.map((c, i) => [
         i + 1, 
-        `${c.nama || "-"}\nNo.M: ${c.noMaktab || "-"}\nGiliran: ${c.angkaGiliran || "-"}`,
+        `${c.nama || "-"}\nT: ${c.tingkatan || "-"} K: ${c.kelas || "-"}\nGil: ${c.angkaGiliran || "-"}`,
         c.jantina,
         c.analitik.tatabahasa, c.analitik.sebutan, c.analitik.kefasihan, c.analitik.idea,
         calculateAnalitikTotal(c), c.holistik, calculateAnalitikTotal(c) + c.holistik, 
@@ -454,6 +591,86 @@ const App = () => {
     } catch (error) {
       console.error("PDF Error:", error);
       showToast("Gagal menjana PDF.");
+    }
+  };
+
+  const generateMasterPDF = (targetKelas: string) => {
+    try {
+      // @ts-ignore
+      const jsPDFLib = window.jspdf?.jsPDF || window.jsPDF;
+      if (!jsPDFLib) {
+        showToast("PDF Library loading...");
+        return;
+      }
+
+      const doc = new jsPDFLib('p', 'mm', 'a4');
+      const pageWidth = doc.internal.pageSize.getWidth();
+      
+      // Cari semua calon dari rekod yang mempunyai kelas ini
+      const uniqueResults = new Map();
+      records.forEach(rec => {
+        rec.candidates.forEach((c: any) => {
+          if (c.nama && c.kelas && String(c.kelas).toUpperCase().includes(targetKelas.toUpperCase())) {
+            const total = calculateAnalitikTotal(c) + (c.holistik || 0);
+            // Simpan markah terbaru (since records are sorted by date desc)
+            if (!uniqueResults.has(c.nama)) {
+               uniqueResults.set(c.nama, {
+                 ...c,
+                 total,
+                 sidang: rec.header.sidang
+               });
+            }
+          }
+        });
+      });
+
+      const sortedMarks = Array.from(uniqueResults.values()).sort((a, b) => a.nama.localeCompare(b.nama));
+
+      if (sortedMarks.length === 0) {
+        showToast(`Tiada markah ditemui untuk kelas ${targetKelas}`);
+        return;
+      }
+
+      doc.setFontSize(14);
+      doc.text("MAKTAB RENDAH SAINS MARA", pageWidth / 2, 15, { align: 'center' });
+      doc.setFontSize(12);
+      doc.text(`BORANG MARKAH INDUK UBBM - KELAS: ${targetKelas}`, pageWidth / 2, 22, { align: 'center' });
+
+      const tableRows = sortedMarks.map((c, i) => [
+        i + 1,
+        c.nama.toUpperCase(),
+        c.jantina,
+        c.tingkatan,
+        c.angkaGiliran,
+        c.total,
+        c.penyelarasan || '-'
+      ]);
+
+      const autoTableOptions = {
+        startY: 30,
+        head: [['BIL', 'NAMA CALON', 'JNT', 'TING', 'GILIRAN', 'MARKAH (70m)', 'PENYELARASAN']],
+        body: tableRows,
+        theme: 'grid',
+        headStyles: { fillColor: [4, 120, 87], fontSize: 9, halign: 'center' },
+        styles: { fontSize: 8, cellPadding: 3, halign: 'center' },
+        columnStyles: { 1: { halign: 'left', cellWidth: 70 } }
+      };
+
+      // @ts-ignore
+      if (typeof doc.autoTable === 'function') {
+        // @ts-ignore
+        doc.autoTable(autoTableOptions);
+      } else {
+        // @ts-ignore
+        const at = window.jspdf?.autoTable || window.autoTable;
+        if (at) at(doc, autoTableOptions);
+      }
+
+      doc.save(`Markah_Indur_UBBM_${targetKelas}.pdf`);
+      showToast(`Laporan Induk ${targetKelas} dijana`);
+    } catch (error) {
+      console.error(error);
+      showToast("Gagal menjana laporan induk.");
     }
   };
 
@@ -510,7 +727,7 @@ const App = () => {
                       <th className="border border-blue-800 p-4 w-12" rowSpan={2}>Bil</th>
                       <th className="border border-blue-800 p-4 text-left" rowSpan={2}>
                         <div className="flex items-center justify-between">
-                            Calon (Nama / KP / Angka Giliran)
+                            Calon (Nama / Ting / Kelas / Giliran)
                             <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg text-[10px] shadow-md active:scale-95">
                                 <Upload size={14} /> Muat Naik Senarai
                             </button>
@@ -542,8 +759,9 @@ const App = () => {
                              </button>
                           </div>
                           <div className="flex gap-2">
-                            <input placeholder="NO. MAKTAB" className="w-1/2 text-[11px] p-1.5 border rounded bg-slate-50" value={c.noMaktab} onChange={(e) => handleInfoChange(idx, 'noMaktab', e.target.value)} />
-                            <input placeholder="GILIRAN" className="w-1/2 text-[11px] p-1.5 border rounded bg-slate-50" value={c.angkaGiliran} onChange={(e) => handleInfoChange(idx, 'angkaGiliran', e.target.value)} />
+                            <input placeholder="TING" className="w-1/4 text-[10px] p-1.5 border rounded bg-slate-50 uppercase" value={c.tingkatan} onChange={(e) => handleInfoChange(idx, 'tingkatan', e.target.value)} />
+                            <input placeholder="KELAS" className="w-2/4 text-[10px] p-1.5 border rounded bg-slate-50 uppercase" value={c.kelas} onChange={(e) => handleInfoChange(idx, 'kelas', e.target.value)} />
+                            <input placeholder="GILIRAN" className="w-1/4 text-[10px] p-1.5 border rounded bg-slate-50 uppercase" value={c.angkaGiliran} onChange={(e) => handleInfoChange(idx, 'angkaGiliran', e.target.value)} />
                           </div>
                         </td>
                         <td className="border-x border-slate-300 p-2">
@@ -608,11 +826,61 @@ const App = () => {
               </div>
 
               <div className="flex flex-wrap gap-4 pt-8 border-t-2 border-slate-200 justify-center">
-                <button onClick={saveRecord} className="flex items-center gap-3 px-10 py-4 bg-blue-700 text-white rounded-2xl hover:bg-blue-800 font-black uppercase tracking-widest shadow-xl transition-all active:scale-95"><Save size={24} /> Simpan Rekod</button>
-                <button onClick={generatePDF} disabled={!isPdfReady} className="flex items-center gap-3 px-10 py-4 bg-emerald-600 text-white rounded-2xl hover:bg-emerald-700 font-black uppercase tracking-widest shadow-xl transition-all active:scale-95"><Printer size={24} /> Cetak PDF</button>
+                <div className="flex flex-col items-center gap-2">
+                  <button onClick={saveRecord} className="flex items-center gap-3 px-10 py-4 bg-blue-700 text-white rounded-2xl hover:bg-blue-800 font-black uppercase tracking-widest shadow-xl transition-all active:scale-95"><Save size={24} /> Simpan Rekod</button>
+                  <p className="text-[9px] text-slate-400 font-bold uppercase">Simpan markah sidang ini</p>
+                </div>
+                
+                <div className="flex flex-col items-center gap-2">
+                  <button onClick={saveToMasterList} className="flex items-center gap-3 px-8 py-4 bg-indigo-600 text-white rounded-2xl hover:bg-indigo-700 font-black uppercase tracking-widest shadow-xl transition-all active:scale-95"><UserCheck size={24} /> Kemaskini Master List</button>
+                  <p className="text-[9px] text-slate-400 font-bold uppercase">Tambah calon ke pangkalan data</p>
+                </div>
+
+                <button onClick={generatePDF} disabled={!isPdfReady} className="flex items-center gap-3 px-10 py-4 bg-emerald-600 text-white rounded-2xl hover:bg-emerald-700 font-black uppercase tracking-widest shadow-xl transition-all active:scale-95 h-fit self-start"><Printer size={24} /> Cetak PDF</button>
                 <button onClick={resetForm} className={`px-8 py-4 rounded-2xl font-black uppercase tracking-widest transition-all ${resetConfirm ? 'bg-red-600 text-white animate-pulse' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'}`}>
                   {resetConfirm ? 'Pasti?' : 'Reset Borang'}
                 </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-2xl border-2 border-slate-200 overflow-hidden">
+            <div className="bg-emerald-900 p-6 text-white flex justify-between items-center border-b-4 border-emerald-600">
+               <div className="flex items-center gap-4">
+                  <FileText size={24} className="text-yellow-500" />
+                  <h3 className="font-black uppercase tracking-[0.2em] text-lg">Jana Laporan Induk Kelas</h3>
+               </div>
+            </div>
+            <div className="p-8">
+              <div className="flex flex-col md:flex-row items-center gap-6">
+                <div className="flex-grow space-y-2 w-full">
+                  <label className="text-xs font-black text-emerald-900 uppercase tracking-widest">Pilih Kelas Untuk Dijana</label>
+                  <select id="master-report-select" className="w-full p-4 border-2 border-emerald-100 rounded-2xl focus:border-emerald-500 outline-none font-bold text-lg bg-emerald-50/30">
+                    <option value="">-- PILIH KELAS --</option>
+                    {Array.from(new Set(masterStudents.map(s => s.kelas).filter(Boolean))).sort().map(k => (
+                      <option key={k} value={k}>{k}</option>
+                    ))}
+                  </select>
+                </div>
+                <button 
+                  onClick={() => {
+                    const select = document.getElementById('master-report-select') as HTMLSelectElement;
+                    if (!select.value) {
+                      showToast("Sila pilih kelas terlebih dahulu");
+                      return;
+                    }
+                    generateMasterPDF(select.value);
+                  }}
+                  className="w-full md:w-auto flex items-center justify-center gap-3 px-12 py-5 bg-emerald-600 text-white rounded-2xl hover:bg-emerald-700 font-black uppercase tracking-widest shadow-xl transition-all active:scale-95 whitespace-nowrap"
+                >
+                  <Upload size={24} className="rotate-180" /> Jana Laporan Induk
+                </button>
+              </div>
+              <div className="mt-4 flex items-start gap-4 p-4 bg-yellow-50 rounded-xl border border-yellow-200">
+                <Info size={20} className="text-yellow-600 flex-shrink-0 mt-0.5" />
+                <p className="text-[11px] text-yellow-800 leading-relaxed font-medium">
+                  Fungsi ini akan mengumpulkan semua markah calon dari pangkalan data bagi kelas yang dipilih, menyusunnya mengikut abjad, dan menjana satu fail PDF ringkasan. Pastikan rekod markah telah disimpan sebelum menjana laporan ini.
+                </p>
               </div>
             </div>
           </div>

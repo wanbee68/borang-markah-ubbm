@@ -278,7 +278,8 @@ async function run() {
         name: name.toUpperCase(),
         maktabId,
         tingkatan,
-        kelas: kelas.toUpperCase()
+        kelas: kelas.toUpperCase(),
+        jantina: 'L' // Default to L, should be updated manually if needed or derived
       });
     });
   });

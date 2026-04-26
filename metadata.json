@@ -1,6 +1,6 @@
 {
   "name": "UBBM Assessment System",
-  "description": "A comprehensive assessment scoring system for Ujian Bertutur Bahasa Melayu (UBBM) with Firebase integration, PDF generation, and Excel import support.",
+  "description": "A comprehensive assessment scoring system for Ujian Bertutur Bahasa Melayu (UBBM) with class-based reporting, PDF generation, and student database integration.",
   "requestFramePermissions": [],
   "majorCapabilities": []
 }
