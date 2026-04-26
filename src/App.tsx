@@ -970,9 +970,31 @@ const App = () => {
 
             <div className="flex-grow overflow-y-auto p-2">
                {filteredStudents.length === 0 ? (
-                 <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-4">
-                    <AlertCircle size={48} />
-                    <p className="font-black uppercase text-sm tracking-widest">Tiada pelajar ditemui</p>
+                 <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-4 p-8">
+                    <AlertCircle size={48} className="text-slate-300" />
+                    <div className="text-center">
+                      <p className="font-black uppercase text-sm tracking-widest text-slate-500">Tiada pelajar ditemui</p>
+                      <p className="text-[10px] font-bold uppercase text-slate-400 mt-1">Cuba cari dengan kata kunci lain atau tambah calon baru di bawah</p>
+                    </div>
+                    <button 
+                      onClick={() => {
+                        const name = searchQuery.toUpperCase();
+                        const newCandidates = [...candidates];
+                        if (activeSlot !== null) {
+                          newCandidates[activeSlot] = {
+                            ...newCandidates[activeSlot],
+                            nama: name,
+                          };
+                          setCandidates(newCandidates);
+                          setShowSearchModal(false);
+                          setActiveSlot(null);
+                          showToast(`Calon ${name} ditambah secara manual`);
+                        }
+                      }}
+                      className="mt-4 px-8 py-3 bg-blue-600 text-white rounded-xl font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg flex items-center gap-2"
+                    >
+                      <PenTool size={18} /> Tambah "{searchQuery}" Secara Manual
+                    </button>
                  </div>
                ) : (
                  <div className="space-y-6">
